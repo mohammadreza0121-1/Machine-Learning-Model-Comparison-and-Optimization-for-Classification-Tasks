@@ -1,0 +1,84 @@
+# Install necessary packages
+install.packages("caret")
+install.packages("randomForest")
+install.packages("e1071")
+install.packages("nnet")
+
+# Load the libraries
+library(caret)
+library(randomForest)
+library(e1071)
+library(nnet)
+
+# Load the libraries
+library(caret)
+library(randomForest)
+library(e1071)
+library(nnet)
+
+# Load the datasets
+train_data <- read.csv("training_set.csv")
+test_data <- read.csv("test_set.csv")
+
+# Check for missing values
+sum(is.na(train_data))
+sum(is.na(test_data))
+
+# Convert the response variable to factor (if not already)
+train_data$Y <- as.factor(train_data$Y)
+
+# Split the training data into a training set and a validation set
+set.seed(123)
+trainIndex <- createDataPartition(train_data$Y, p = .8, list = FALSE, times = 1)
+trainSet <- train_data[trainIndex,]
+valSet <- train_data[-trainIndex,]
+
+# Fit models
+set.seed(123)
+fit1 <- randomForest(Y ~ ., data=trainSet, ntree=100)
+fit2 <- svm(Y ~ ., data=trainSet, kernel='radial')
+fit3 <- nnet(Y ~ ., data=trainSet, size=10, maxit=200, decay=0.01)
+
+# Ensure the levels of predicted and actual values are the same
+pred1 <- predict(fit1, valSet)
+pred2 <- predict(fit2, valSet)
+pred3 <- predict(fit3, valSet, type = "class")
+
+pred1 <- factor(pred1, levels = levels(valSet$Y))
+pred2 <- factor(pred2, levels = levels(valSet$Y))
+pred3 <- factor(pred3, levels = levels(valSet$Y))
+
+# Evaluate models
+acc1 <- confusionMatrix(pred1, valSet$Y)$overall['Accuracy']
+acc2 <- confusionMatrix(pred2, valSet$Y)$overall['Accuracy']
+acc3 <- confusionMatrix(pred3, valSet$Y)$overall['Accuracy']
+
+# Compare models
+accuracies <- data.frame(Model=c('Random Forest', 'SVM', 'Neural Network'), Accuracy=c(acc1, acc2, acc3))
+print(accuracies)
+
+# Tuning the Random Forest model
+set.seed(123)
+tuned_rf <- tuneRF(trainSet[,-ncol(trainSet)], trainSet$Y, stepFactor=1.5, improve=0.01, ntreeTry=100)
+best_mtry <- tuned_rf[which.min(tuned_rf[, "OOBError"]), "mtry"]
+fit1_tuned <- randomForest(Y ~ ., data=trainSet, mtry=best_mtry, ntree=100)
+
+# Tuning the SVM model
+tuned_svm <- tune(svm, Y ~ ., data=trainSet, ranges=list(cost=10^(-1:2), gamma=c(0.01, 0.1, 1)))
+fit2_tuned <- tuned_svm$best.model
+
+# Assume Random Forest was the best model after evaluation and tuning
+final_model <- fit1_tuned
+
+# Predict on the test set
+test_predictions <- predict(final_model, test_data)
+
+# Ensure the predictions are factors with the same levels as the training data response variable
+test_predictions <- factor(test_predictions, levels = levels(train_data$Y))
+
+# Save predictions to a CSV file
+write.csv(test_predictions, "predictions.csv", row.names=FALSE)
+
+# Identify important variables
+important_vars <- importance(fit1_tuned)
+print(important_vars)
